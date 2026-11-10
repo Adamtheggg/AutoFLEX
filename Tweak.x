@@ -5,7 +5,7 @@
 #include <objc/message.h>
 #import "FLEXManager.h"
 
-#define AF_SUB_VALUE @"SuperGrok"
+#define AF_SUB @"SuperGrok"
 #define AF_MARKER @"X-AF-Stamped"
 
 @interface UIStatusBarWindow : UIWindow @end
@@ -37,12 +37,15 @@ static BOOL AFIsGrok(NSString *host) {
     return [h hasSuffix:@"grok.com"] || [h hasSuffix:@"x.ai"];
 }
 
-static void AFStamp(NSMutableURLRequest *m) {
-    if (![m isKindOfClass:[NSMutableURLRequest class]]) return;
-    [m setValue:AF_SUB_VALUE forHTTPHeaderField:@"x-user-subscription"];
+// stamp any mutable request for grok hosts
+static void AFStamp(id req) {
+    if (![req isKindOfClass:[NSMutableURLRequest class]]) return;
+    NSMutableURLRequest *m = (NSMutableURLRequest *)req;
+    [m setValue:AF_SUB forHTTPHeaderField:@"x-user-subscription"];
     [m setValue:@"1" forHTTPHeaderField:AF_MARKER];
 }
 
+// NSURLProtocol catches URLSession traffic the hooks miss
 @interface AFProtocol : NSURLProtocol
 @property (nonatomic, strong) NSURLSessionDataTask *task;
 @end
@@ -62,11 +65,10 @@ static void AFStamp(NSMutableURLRequest *m) {
 - (void)startLoading {
     NSMutableURLRequest *m = [self.request mutableCopy];
     AFStamp(m);
-    NSLog(@"[AF] protocol fired: %@%@", m.URL.host, m.URL.path);
     NSURLSession *s = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]];
-    __weak typeof(self) weakSelf = self;
+    __weak typeof(self) w = self;
     self.task = [s dataTaskWithRequest:m completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
-        __strong typeof(weakSelf) s2 = weakSelf; if (!s2) return;
+        __strong typeof(w) s2 = w; if (!s2) return;
         if (e) { [s2.client URLProtocol:s2 didFailWithError:e]; return; }
         [s2.client URLProtocol:s2 didReceiveResponse:r cacheStoragePolicy:NSURLCacheStorageNotAllowed];
         [s2.client URLProtocol:s2 didLoadData:d];
@@ -80,33 +82,36 @@ static void AFStamp(NSMutableURLRequest *m) {
 %hook NSMutableURLRequest
 - (void)setValue:(NSString *)v forHTTPHeaderField:(NSString *)f {
     if ([f.lowercaseString isEqualToString:@"x-user-subscription"] && AFIsGrok(self.URL.host)) {
-        NSLog(@"[AF] setValue %@", self.URL.host);
-        %orig(AF_SUB_VALUE, f); return;
+        %orig(AF_SUB, f); return;
     }
     %orig;
 }
 - (void)addValue:(NSString *)v forHTTPHeaderField:(NSString *)f {
     if ([f.lowercaseString isEqualToString:@"x-user-subscription"] && AFIsGrok(self.URL.host)) {
-        NSLog(@"[AF] addValue %@", self.URL.host);
-        %orig(AF_SUB_VALUE, f); return;
+        %orig(AF_SUB, f); return;
     }
     %orig;
 }
 - (void)setAllHTTPHeaderFields:(NSDictionary *)d {
     if (AFIsGrok(self.URL.host)) {
-        NSLog(@"[AF] setAllHTTPHeaderFields %@", self.URL.host);
         NSMutableDictionary *n = [d mutableCopy] ?: [NSMutableDictionary dictionary];
-        n[@"x-user-subscription"] = AF_SUB_VALUE;
+        n[@"x-user-subscription"] = AF_SUB;
         %orig(n); return;
     }
     %orig;
 }
 %end
 
+// websocket handshake (chat runs over /ws)
+%hook NSMutableURLRequest
+- (void)setURL:(NSURL *)u { %orig; if (AFIsGrok(u.host)) AFStamp(self); }
+%end
+
+// local profile cache, so the app boots believing it
 %hook NSUserDefaults
-- (id)objectForKey:(NSString *)key {
+- (id)objectForKey:(NSString *)k {
     id v = %orig;
-    if ([key isEqualToString:@"cachedUserProfile"] && [v isKindOfClass:[NSString class]]) {
+    if ([k isEqualToString:@"cachedUserProfile"] && [v isKindOfClass:[NSString class]]) {
         NSString *s = (NSString *)v;
         if ([s containsString:@"\"xSubscriptionType\":\"\""]) {
             return [s stringByReplacingOccurrencesOfString:@"\"xSubscriptionType\":\"\""
@@ -119,7 +124,6 @@ static void AFStamp(NSMutableURLRequest *m) {
 
 %ctor {
     [NSURLProtocol registerClass:objc_getClass("AFProtocol")];
-    NSLog(@"[AF] tweak loaded, protocol registered");
     [[NSNotificationCenter defaultCenter] addObserver:[AutoFLEX sharedInstance]
                                              selector:@selector(inject)
                                                  name:UIApplicationDidBecomeActiveNotification
