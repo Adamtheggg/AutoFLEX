@@ -1,1 +1,2 @@
+// Replace "-" with the target bundle ID to narrow, e.g. "com.example.app"
 { Filter = { Bundles = ( "-" ); }; }
