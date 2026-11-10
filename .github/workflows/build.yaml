@@ -1,3 +1,4 @@
+
 name: Build
 on:
   workflow_dispatch:
@@ -31,10 +32,9 @@ jobs:
       run: >
         gh release create "build-${{ github.run_number }}"
         --repo "${{ github.repository }}" --notes "" -t "Build ${{ github.run_number }}"
-    - name: Upload packages to GitHub Release
+    - name: Upload package to GitHub Release
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: >
         gh release upload "build-${{ github.run_number }}"
-        --repo "${{ github.repository }}" --clobber
-        packages/*.deb packages/*.dylib
+        --repo "${{ github.repository }}" --clobber packages/*.deb
