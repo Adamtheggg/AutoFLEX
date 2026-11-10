@@ -18,35 +18,25 @@ jobs:
     - name: Install Theos
       uses: Randomblock1/theos-action@v1.4
       with:
-        # Where to install Theos
         theos-dir: ${{ github.workspace }}/theos
-        # Where to clone Theos from (git URL)
         theos-src: https://github.com/theos/theos
-        # Where to clone the iOS SDKs from (GitHub repository URL)
         theos-sdks: https://github.com/theos/sdks
-        # Which branch to clone from SDK repo
         theos-sdks-branch: master
-        # Whether to enable Orion, which adds support for Swift tweaks
         orion: false
     - name: Run build script
       run: chmod +x ./build.sh && ./build.sh
+    - name: List artifacts
+      run: ls -la packages/
     - name: Create GitHub Release
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: >-
-        gh release create
-        '${{ github.ref_name }}'
-        --repo '${{ github.repository }}'
-        --notes ""
-        -t 'Release ${{ github.ref_name }}'
-    - name: Upload artifact signatures to GitHub Release
+      run: >
+        gh release create "build-${{ github.run_number }}"
+        --repo "${{ github.repository }}" --notes "" -t "Build ${{ github.run_number }}"
+    - name: Upload packages to GitHub Release
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      # Upload to GitHub Release using the `gh` CLI.
-      # `dist/` contains the built packages, and the
-      # sigstore-produced signatures and certificates.
-      run: >-
-        gh release upload
-        '${{ github.ref_name }}' packages/**
-        --repo '${{ github.repository }}'
-    
+      run: >
+        gh release upload "build-${{ github.run_number }}"
+        --repo "${{ github.repository }}" --clobber
+        packages/*.deb packages/*.dylib packages/*.plist
