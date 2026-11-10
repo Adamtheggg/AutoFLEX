@@ -37,7 +37,6 @@ static BOOL AFIsGrok(NSString *host) {
     return [h hasSuffix:@"grok.com"] || [h hasSuffix:@"x.ai"];
 }
 
-// stamp any mutable request for grok hosts
 static void AFStamp(id req) {
     if (![req isKindOfClass:[NSMutableURLRequest class]]) return;
     NSMutableURLRequest *m = (NSMutableURLRequest *)req;
@@ -45,7 +44,6 @@ static void AFStamp(id req) {
     [m setValue:@"1" forHTTPHeaderField:AF_MARKER];
 }
 
-// NSURLProtocol catches URLSession traffic the hooks miss
 @interface AFProtocol : NSURLProtocol
 @property (nonatomic, strong) NSURLSessionDataTask *task;
 @end
@@ -102,12 +100,6 @@ static void AFStamp(id req) {
 }
 %end
 
-// websocket handshake (chat runs over /ws)
-%hook NSMutableURLRequest
-- (void)setURL:(NSURL *)u { %orig; if (AFIsGrok(u.host)) AFStamp(self); }
-%end
-
-// local profile cache, so the app boots believing it
 %hook NSUserDefaults
 - (id)objectForKey:(NSString *)k {
     id v = %orig;
