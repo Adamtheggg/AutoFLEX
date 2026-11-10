@@ -16,3 +16,13 @@ sed -i '' '59s/std::atomic<mask_t> _maybeMask;/mask_t _maybeMask;/' "$FILE"
 sed -i '' '65s/std::atomic<preopt_cache_t \*> _originalPreoptCache;/preopt_cache_t \* _originalPreoptCache;/' "$FILE"
 
 make package
+# Also export a bare dylib (ESign injects .dylib more reliably than .deb)
+DY="$(find .theos/obj -name 'autoflex.dylib' | head -n1)"
+if [ -n "$DY" ]; then
+  mkdir -p packages
+  cp "$DY" packages/autoflex.dylib
+  cp autoflex.plist packages/autoflex.plist
+  lipo -info packages/autoflex.dylib || true
+else
+  echo "WARNING: no dylib found to export"
+fi
