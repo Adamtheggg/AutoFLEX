@@ -53,3 +53,38 @@ __attribute__((visibility("hidden")))
 %ctor {
     [[NSNotificationCenter defaultCenter] addObserver:[AutoFLEX sharedInstance] selector:@selector(inject) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
+
+
+// ==== SuperGrok header override ====
+static NSString *const kAFSubValue = @"SuperGrok";
+
+static BOOL AFIsGrokHost(NSURLRequest *req) {
+    NSString *h = req.URL.host.lowercaseString;
+    if (!h) return NO;
+    return [h hasSuffix:@"grok.com"] || [h hasSuffix:@"x.ai"];
+}
+
+%hook NSMutableURLRequest
+- (void)setValue:(NSString *)value forHTTPHeaderField:(NSString *)field {
+    if ([field.lowercaseString isEqualToString:@"x-user-subscription"] && AFIsGrokHost(self)) {
+        %orig(kAFSubValue, field);
+        return;
+    }
+    %orig;
+}
+%end
+
+%hook NSURLSession
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
+    if (AFIsGrokHost(request) && [request isKindOfClass:[NSMutableURLRequest class]]) {
+        [(NSMutableURLRequest *)request setValue:kAFSubValue forHTTPHeaderField:@"x-user-subscription"];
+    }
+    return %orig;
+}
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))completionHandler {
+    if (AFIsGrokHost(request) && [request isKindOfClass:[NSMutableURLRequest class]]) {
+        [(NSMutableURLRequest *)request setValue:kAFSubValue forHTTPHeaderField:@"x-user-subscription"];
+    }
+    return %orig;
+}
+%end
